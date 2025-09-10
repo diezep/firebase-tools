@@ -205,18 +205,38 @@ export class TaskQueue {
 
   dispatchTasks(): void {
     while (!this.queue.isEmpty() && this.openDispatches.length > 0 && this.tokens >= 1) {
-      const dispatchLocation = this.openDispatches.pop();
-      if (dispatchLocation !== undefined) {
-        const dispatch = this.queue.dequeue();
-
-        dispatch.metadata.lastRunTime = null;
-        dispatch.metadata.currentAttempt = 1;
-        dispatch.metadata.status = TaskStatus.NOT_STARTED;
-        dispatch.metadata.startTime = Date.now();
-
-        this.dispatches[dispatchLocation] = dispatch;
-        this.tokens--;
+      // Get all tasks and find ones that are ready to dispatch
+      const allTasks = this.queue.getAll();
+      let readyTask: EmulatedTask | null = null;
+      
+      // Find the first ready task (maintains FIFO order for ready tasks)
+      for (const task of allTasks) {
+        if (this.isReadyToDispatch(task.task)) {
+          readyTask = task;
+          break;
+        }
       }
+      
+      // If no tasks are ready, break out of the loop
+      if (!readyTask) {
+        break;
+      }
+
+      const dispatchLocation = this.openDispatches.pop();
+      if (dispatchLocation === undefined) {
+        break;
+      }
+
+      // Remove the ready task from the queue
+      this.queue.remove(readyTask.task.name);
+
+      readyTask.metadata.lastRunTime = null;
+      readyTask.metadata.currentAttempt = 1;
+      readyTask.metadata.status = TaskStatus.NOT_STARTED;
+      readyTask.metadata.startTime = Date.now();
+
+      this.dispatches[dispatchLocation] = readyTask;
+      this.tokens--;
     }
   }
 
@@ -460,5 +480,23 @@ export class TaskQueue {
       maxRate: this.config.rateLimits.maxDispatchesPerSecond,
       maxConcurrent: this.config.rateLimits.maxConcurrentDispatches,
     };
+  }
+
+  private isReadyToDispatch(task: Task): boolean {
+    // If no scheduleTime, it's ready now.
+    if (!task.scheduleTime) return true;
+
+    const t = task.scheduleTime;
+    const asDate = Date.parse(t);
+    if (!isNaN(asDate)) {
+      return Date.now() >= asDate;
+    }
+    // Fallback: if scheduleTime is a numeric string, interpret as ms since epoch.
+    const asNum = Number(t);
+    if (!isNaN(asNum)) {
+      return Date.now() >= asNum;
+    }
+    // Unknown format; default to dispatch now rather than blocking forever.
+    return true;
   }
 }

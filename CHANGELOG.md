@@ -2,3 +2,4 @@
 - `firebase init dataconnect` also supports bootstrapping flutter template. (#9084)
 - Fixed a vulnerability in `unzip` util where files could be written outside of the expected output directory.
 - `firebase init dataconnect` confirms Cloud SQL provisioning. (#9095)
+- Fixed a bug where Cloud Tasks Emulator ignores scheduleDelaySeconds or scheduleTime and instantly executes enqueued tasks (#8254)

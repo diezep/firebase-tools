@@ -273,6 +273,14 @@ export class TasksEmulator implements EmulatorInstance {
       );
 
       const task = req.body.task as Task;
+      const scheduleDelaySeconds: unknown =
+        (req.body && (req.body.scheduleDelaySeconds as unknown)) ??
+        (req.body.task && (req.body.task.scheduleDelaySeconds as unknown));
+
+      if (task.scheduleTime === undefined && typeof scheduleDelaySeconds === "number") {
+        const etaMs = Date.now() + scheduleDelaySeconds * 1000;
+        task.scheduleTime = new Date(etaMs).toISOString();
+      }
 
       try {
         this.controller.enqueue(queueKey, task);

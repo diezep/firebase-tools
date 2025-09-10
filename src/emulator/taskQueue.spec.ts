@@ -310,6 +310,22 @@ describe("Task Queue", () => {
       return res;
     });
 
+    it("should set X-CloudTasks-TaskETA from scheduleTime when provided", () => {
+      const taskQueue = new TaskQueue(TEST_TASK_QUEUE_NAME, TEST_TASK_QUEUE_CONFIG);
+      const response = new nodeFetch.Response(undefined, { status: 200 });
+      const fetchStub = sinon.stub(nodeFetch, "default").resolves(response);
+      stubs.push(fetchStub);
+      const scheduledTask = _.cloneDeep(TEST_TASK);
+      scheduledTask.task.scheduleTime = String(NOW);
+      taskQueue.setDispatch([scheduledTask]);
+      const res = taskQueue.runTask(0).then(() => {
+        expect(fetchStub).to.have.been.calledOnce;
+        const [, init] = fetchStub.getCall(0).args as [string, any];
+        expect(init.headers["X-CloudTasks-TaskETA"]).to.eq(String(NOW));
+      });
+      return res;
+    });
+
     it("Should wait until the backoff time has elapsed", () => {
       const taskQueue = new TaskQueue(TEST_TASK_QUEUE_NAME, TEST_TASK_QUEUE_CONFIG);
       const response = new nodeFetch.Response(undefined, { status: 200 });
@@ -445,6 +461,46 @@ describe("Task Queue", () => {
         task1,
         TEST_TASK.task,
       ]);
+    });
+
+    it("should not dispatch tasks before their scheduleTime", () => {
+      const taskQueue = new TaskQueue(TEST_TASK_QUEUE_NAME, TEST_TASK_QUEUE_CONFIG);
+      const task = _.cloneDeep(TEST_TASK.task);
+      task.scheduleTime = String(NOW + 10 * 1000);
+      taskQueue.enqueue(task);
+      taskQueue.setTokens(1);
+      taskQueue.dispatchTasks();
+      expect(taskQueue.getDispatch()[0]).to.eq(null);
+    });
+
+    it("should dispatch tasks at or after their scheduleTime", () => {
+      const taskQueue = new TaskQueue(TEST_TASK_QUEUE_NAME, TEST_TASK_QUEUE_CONFIG);
+      const task = _.cloneDeep(TEST_TASK.task);
+      task.scheduleTime = new Date(NOW - 1).toISOString();
+      task.name = "task1";
+      taskQueue.enqueue(task);
+      taskQueue.setTokens(1);
+      taskQueue.dispatchTasks();
+      expect(taskQueue.getDispatch()[0]!.task.name).to.eq("task1");
+    });
+
+    it("should respect scheduleTime", () => {
+      const taskQueue = new TaskQueue(TEST_TASK_QUEUE_NAME, TEST_TASK_QUEUE_CONFIG);
+      const task = _.cloneDeep(TEST_TASK.task);
+      task.scheduleTime = new Date(NOW + 10 * 1000).toISOString();
+      task.name = "task1";
+      taskQueue.enqueue(task);
+      taskQueue.setTokens(1);
+      taskQueue.dispatchTasks();
+      expect(taskQueue.getDispatch()[0]).to.eq(null);
+
+      const task2 = _.cloneDeep(TEST_TASK.task);
+      task2.scheduleTime = new Date(NOW - 1).toISOString();
+      task2.name = "task2";
+      taskQueue.enqueue(task2);
+      taskQueue.setTokens(1);
+      taskQueue.dispatchTasks();
+      expect(taskQueue.getDispatch()[0]).to.eq(null);
     });
   });
 });
